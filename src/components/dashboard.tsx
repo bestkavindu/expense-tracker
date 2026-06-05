@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { createCategory, deleteCategory, type ActionResult } from "@/app/(app)/dashboard/actions";
+import { createCategory, createExpense, deleteCategory, type ActionResult } from "@/app/(app)/dashboard/actions";
 import { ICON_KEYS, type Category, type IconKey } from "@/lib/categories";
 import "./dashboard.css";
 
@@ -358,6 +358,163 @@ function AddCategoryModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+const BackIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M15 5l-7 7 7 7" />
+  </svg>
+);
+
+const STEPS = ["Category", "Date", "Amount"] as const;
+
+// local YYYY-MM-DD for the date input default (avoids UTC shift from toISOString).
+function todayISO() {
+  const d = new Date();
+  const tz = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - tz).toISOString().slice(0, 10);
+}
+
+function AddExpenseModal({
+  categories,
+  onClose,
+}: {
+  categories: Category[];
+  onClose: () => void;
+}) {
+  const [step, setStep] = useState(0); // 0 category, 1 date, 2 amount
+  const [categoryId, setCategoryId] = useState("");
+  const [spentAt, setSpentAt] = useState(todayISO());
+  const [state, action, pending] = useActionState(
+    async (_: ActionResult, fd: FormData) => createExpense(fd),
+    {} as ActionResult,
+  );
+
+  useEffect(() => {
+    if (state.ok) onClose();
+  }, [state.ok, onClose]);
+
+  const selected = categories.find((c) => c.id === categoryId);
+
+  return (
+    <div className="dash-modal-back" onMouseDown={onClose}>
+      <div className="dash-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="dash-modal-head">
+          <h2>Add expense</h2>
+          <button type="button" className="dash-modal-x" onClick={onClose} aria-label="Close">
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="dash-steps">
+          {STEPS.map((label, i) => (
+            <div key={label} className={"dash-step" + (i === step ? " on" : i < step ? " done" : "")}>
+              <span className="dot">{i + 1}</span>
+              {label}
+            </div>
+          ))}
+        </div>
+
+        <form action={action} className="dash-modal-form">
+          <input type="hidden" name="category_id" value={categoryId} />
+          <input type="hidden" name="spent_at" value={spentAt} />
+
+          {step === 0 && (
+            <div className="dash-field">
+              <span>Category</span>
+              {categories.length === 0 ? (
+                <p className="dash-cat-empty">Add a category first.</p>
+              ) : (
+                <div className="dash-exp-cats">
+                  {categories.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className={"dash-exp-cat" + (categoryId === c.id ? " on" : "")}
+                      onClick={() => {
+                        setCategoryId(c.id);
+                        setStep(1);
+                      }}
+                    >
+                      <span className="icon" style={{ color: ICON_COLOR[c.icon] ?? ICON_COLOR.tag }}>
+                        <CatIcon icon={c.icon} />
+                      </span>
+                      <span className="nm">{c.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {step === 1 && (
+            <label className="dash-field">
+              <span>Date</span>
+              <input
+                name="spent_at_visible"
+                type="date"
+                value={spentAt}
+                max={todayISO()}
+                onChange={(e) => setSpentAt(e.target.value)}
+                autoFocus
+              />
+            </label>
+          )}
+
+          {step === 2 && (
+            <>
+              <label className="dash-field">
+                <span>Amount</span>
+                <input
+                  name="amount"
+                  type="number"
+                  inputMode="decimal"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  placeholder="0.00"
+                  autoFocus
+                />
+              </label>
+              <label className="dash-field">
+                <span>Note</span>
+                <input name="note" type="text" maxLength={120} placeholder="Optional" />
+              </label>
+              <div className="dash-exp-summary">
+                {selected?.name} · {spentAt}
+              </div>
+            </>
+          )}
+
+          {state.error && <p className="dash-modal-err">{state.error}</p>}
+
+          <div className="dash-modal-foot">
+            {step > 0 ? (
+              <button type="button" className="dash-btn ghost" onClick={() => setStep(step - 1)}>
+                <BackIcon />
+                Back
+              </button>
+            ) : (
+              <button type="button" className="dash-btn ghost" onClick={onClose}>
+                Cancel
+              </button>
+            )}
+
+            {step === 1 && (
+              <button type="button" className="dash-btn" onClick={() => setStep(2)} disabled={!spentAt}>
+                Next
+              </button>
+            )}
+            {step === 2 && (
+              <button type="submit" className="dash-btn" disabled={pending}>
+                {pending ? "Adding…" : "Add expense"}
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function CategoriesTab({ categories, onAdd }: { categories: Category[]; onAdd: () => void }) {
   return (
     <section className="dash-panel">
@@ -384,6 +541,7 @@ export function Dashboard({ email, categories }: { email: string; categories: Ca
   void email; // shown in the top bar; greeting kept generic
   const [tab, setTab] = useState<Tab>("Overview");
   const [adding, setAdding] = useState(false);
+  const [addingExpense, setAddingExpense] = useState(false);
 
   return (
     <div className="dash">
@@ -394,7 +552,7 @@ export function Dashboard({ email, categories }: { email: string; categories: Ca
             <p className="dash-sub">Welcome back — here&apos;s your money this month.</p>
           </div>
           <div className="dash-actions">
-            <button className="dash-btn" type="button">
+            <button className="dash-btn" type="button" onClick={() => setAddingExpense(true)}>
               <PlusIcon />
               Add expense
             </button>
@@ -423,6 +581,9 @@ export function Dashboard({ email, categories }: { email: string; categories: Ca
       </div>
 
       {adding && <AddCategoryModal onClose={() => setAdding(false)} />}
+      {addingExpense && (
+        <AddExpenseModal categories={categories} onClose={() => setAddingExpense(false)} />
+      )}
     </div>
   );
 }

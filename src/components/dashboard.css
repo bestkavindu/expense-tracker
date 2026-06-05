@@ -626,3 +626,100 @@
   gap: 10px;
   margin-top: 4px;
 }
+
+/* --- add-expense stepper --- */
+.dash-steps {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.dash-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--faint);
+}
+.dash-step .dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+.dash-step.on {
+  color: var(--txt);
+}
+.dash-step.on .dot {
+  border-color: var(--mint);
+  color: var(--mint);
+}
+.dash-step.done {
+  color: var(--muted);
+}
+.dash-step.done .dot {
+  border-color: var(--mint-d);
+  background: var(--mint-d);
+  color: #052017;
+}
+
+.dash-exp-cats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 9px;
+}
+.dash-exp-cat {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 13px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--txt);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dash-exp-cat:hover {
+  border-color: var(--muted);
+}
+.dash-exp-cat.on {
+  border-color: var(--mint);
+  box-shadow: inset 0 0 0 1px var(--mint);
+}
+.dash-exp-cat .icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dash-exp-cat .icon svg {
+  width: 17px;
+  height: 17px;
+}
+.dash-exp-cat .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-exp-summary {
+  font-size: 13.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin: -4px 0 0;
+}

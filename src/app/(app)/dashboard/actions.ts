@@ -80,6 +80,39 @@ export async function createCategory(formData: FormData): Promise<ActionResult> 
   return { ok: true };
 }
 
+export async function createExpense(formData: FormData): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const categoryId = String(formData.get("category_id") ?? "").trim();
+  const spentAt = String(formData.get("spent_at") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  const amount = Number(formData.get("amount"));
+
+  if (!categoryId) return { error: "Pick a category." };
+  if (!spentAt || Number.isNaN(Date.parse(spentAt))) return { error: "Pick a valid date." };
+  if (!Number.isFinite(amount) || amount <= 0) return { error: "Enter an amount greater than 0." };
+
+  const { error } = await supabase.from("expenses").insert({
+    user_id: user.id,
+    category_id: categoryId,
+    amount,
+    spent_at: spentAt,
+    note: note || null,
+  });
+  if (error) {
+    // Foreign key violation → category isn't the user's.
+    if (error.code === "23503") return { error: "That category no longer exists." };
+    return { error: error.message };
+  }
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 export async function deleteCategory(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient();
   const {
