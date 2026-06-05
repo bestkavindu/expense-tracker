@@ -6,6 +6,7 @@ import {
   createExpense,
   deleteCategory,
   setMonthlyBudget,
+  updateCategory,
   type ActionResult,
 } from "@/app/(app)/dashboard/actions";
 import {
@@ -333,13 +334,18 @@ const TrashIcon = () => (
     <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13" />
   </svg>
 );
+const EditIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+  </svg>
+);
 const CloseIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <path d="M6 6l12 12M18 6 6 18" />
   </svg>
 );
 
-function CategoryRow({ c }: { c: Category }) {
+function CategoryRow({ c, onEdit }: { c: Category; onEdit: (c: Category) => void }) {
   const color = ICON_COLOR[c.icon] ?? ICON_COLOR.tag;
   const [, action, pending] = useActionState(
     async (_: ActionResult, fd: FormData) => deleteCategory(fd),
@@ -355,9 +361,22 @@ function CategoryRow({ c }: { c: Category }) {
         {c.description && <div className="desc">{c.description}</div>}
       </div>
       <div className="right">
-        {c.is_default ? (
-          <span className="tag-default">Default</span>
-        ) : (
+        {c.is_default && <span className="tag-default">Default</span>}
+        {c.monthly_limit > 0 && (
+          <span className="dash-cat-limit">
+            {CUR}
+            {fmtMoney(c.monthly_limit)}
+          </span>
+        )}
+        <button
+          className="dash-cat-del"
+          type="button"
+          aria-label={`Edit ${c.name}`}
+          onClick={() => onEdit(c)}
+        >
+          <EditIcon />
+        </button>
+        {!c.is_default && (
           <form action={action}>
             <input type="hidden" name="id" value={c.id} />
             <button className="dash-cat-del" type="submit" aria-label={`Delete ${c.name}`} disabled={pending}>
@@ -370,10 +389,15 @@ function CategoryRow({ c }: { c: Category }) {
   );
 }
 
-function AddCategoryModal({ onClose }: { onClose: () => void }) {
-  const [icon, setIcon] = useState<IconKey>("tag");
+// Create or edit a category. Pass `category` to edit (prefills + updates).
+function CategoryModal({ category, onClose }: { category?: Category; onClose: () => void }) {
+  const editing = !!category;
+  const initIcon = (ICON_KEYS as readonly string[]).includes(category?.icon ?? "")
+    ? (category!.icon as IconKey)
+    : "tag";
+  const [icon, setIcon] = useState<IconKey>(initIcon);
   const [state, action, pending] = useActionState(
-    async (_: ActionResult, fd: FormData) => createCategory(fd),
+    async (_: ActionResult, fd: FormData) => (editing ? updateCategory(fd) : createCategory(fd)),
     {} as ActionResult,
   );
 
@@ -385,22 +409,37 @@ function AddCategoryModal({ onClose }: { onClose: () => void }) {
     <div className="dash-modal-back" onMouseDown={onClose}>
       <div className="dash-modal" onMouseDown={(e) => e.stopPropagation()}>
         <div className="dash-modal-head">
-          <h2>New category</h2>
+          <h2>{editing ? "Edit category" : "New category"}</h2>
           <button type="button" className="dash-modal-x" onClick={onClose} aria-label="Close">
             <CloseIcon />
           </button>
         </div>
         <form action={action} className="dash-modal-form">
           <input type="hidden" name="icon" value={icon} />
+          {editing && <input type="hidden" name="id" value={category!.id} />}
 
           <label className="dash-field">
             <span>Name</span>
-            <input name="name" type="text" required maxLength={40} placeholder="e.g. Subscriptions" autoFocus />
+            <input
+              name="name"
+              type="text"
+              required
+              maxLength={40}
+              placeholder="e.g. Subscriptions"
+              defaultValue={category?.name ?? ""}
+              autoFocus
+            />
           </label>
 
           <label className="dash-field">
             <span>Description</span>
-            <input name="description" type="text" maxLength={120} placeholder="Optional" />
+            <input
+              name="description"
+              type="text"
+              maxLength={120}
+              placeholder="Optional"
+              defaultValue={category?.description ?? ""}
+            />
           </label>
 
           <label className="dash-field">
@@ -412,6 +451,7 @@ function AddCategoryModal({ onClose }: { onClose: () => void }) {
               step="0.01"
               min="0"
               placeholder="Optional — shows in Budgets"
+              defaultValue={category && category.monthly_limit > 0 ? category.monthly_limit : ""}
             />
           </label>
 
@@ -441,7 +481,7 @@ function AddCategoryModal({ onClose }: { onClose: () => void }) {
               Cancel
             </button>
             <button type="submit" className="dash-btn" disabled={pending}>
-              {pending ? "Adding…" : "Add category"}
+              {pending ? "Saving…" : editing ? "Save" : "Add category"}
             </button>
           </div>
         </form>
@@ -682,7 +722,15 @@ function BudgetModal({ overview, onClose }: { overview: MonthlyOverview; onClose
   );
 }
 
-function CategoriesTab({ categories, onAdd }: { categories: Category[]; onAdd: () => void }) {
+function CategoriesTab({
+  categories,
+  onAdd,
+  onEdit,
+}: {
+  categories: Category[];
+  onAdd: () => void;
+  onEdit: (c: Category) => void;
+}) {
   return (
     <section className="dash-panel">
       <div className="dash-cat-head">
@@ -693,7 +741,7 @@ function CategoriesTab({ categories, onAdd }: { categories: Category[]; onAdd: (
         </button>
       </div>
       {categories.map((c) => (
-        <CategoryRow key={c.id} c={c} />
+        <CategoryRow key={c.id} c={c} onEdit={onEdit} />
       ))}
       {categories.length === 0 && <p className="dash-cat-empty">No categories yet.</p>}
     </section>
@@ -720,6 +768,7 @@ export function Dashboard({
   void email; // shown in the top bar; greeting kept generic
   const [tab, setTab] = useState<Tab>("Overview");
   const [adding, setAdding] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [addingExpense, setAddingExpense] = useState(false);
   const [editingBudget, setEditingBudget] = useState(false);
 
@@ -762,11 +811,18 @@ export function Dashboard({
         {tab === "Overview" ? (
           <OverviewTab expenses={expenses} overview={overview} weekly={weekly} />
         ) : (
-          <CategoriesTab categories={categories} onAdd={() => setAdding(true)} />
+          <CategoriesTab
+            categories={categories}
+            onAdd={() => setAdding(true)}
+            onEdit={(c) => setEditingCategory(c)}
+          />
         )}
       </div>
 
-      {adding && <AddCategoryModal onClose={() => setAdding(false)} />}
+      {adding && <CategoryModal onClose={() => setAdding(false)} />}
+      {editingCategory && (
+        <CategoryModal category={editingCategory} onClose={() => setEditingCategory(null)} />
+      )}
       {addingExpense && (
         <AddExpenseModal categories={categories} onClose={() => setAddingExpense(false)} />
       )}

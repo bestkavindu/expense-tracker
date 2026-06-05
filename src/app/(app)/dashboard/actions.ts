@@ -100,6 +100,41 @@ export async function createCategory(formData: FormData): Promise<ActionResult> 
   return { ok: true };
 }
 
+export async function updateCategory(formData: FormData): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Missing category id." };
+
+  const name = String(formData.get("name") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const iconRaw = String(formData.get("icon") ?? "tag");
+  const icon: IconKey = (ICON_KEYS as readonly string[]).includes(iconRaw)
+    ? (iconRaw as IconKey)
+    : "tag";
+  if (!name) return { error: "Name is required." };
+
+  const limitRaw = Number(formData.get("monthly_limit"));
+  const monthly_limit = Number.isFinite(limitRaw) && limitRaw > 0 ? limitRaw : 0;
+
+  // RLS scopes the update to the owner.
+  const { error } = await supabase
+    .from("categories")
+    .update({ name, description: description || null, icon, monthly_limit })
+    .eq("id", id);
+  if (error) {
+    if (error.code === "23505") return { error: "A category with that name exists." };
+    return { error: error.message };
+  }
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
 export async function createExpense(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient();
   const {
