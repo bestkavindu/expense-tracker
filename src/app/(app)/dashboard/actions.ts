@@ -388,6 +388,38 @@ export async function getWeeklySpending(weeks = 8): Promise<WeeklyBar[]> {
   return bars;
 }
 
+// Total expenses per month for the last `months` months (oldest → current).
+export async function getMonthlySpending(months = 6): Promise<WeeklyBar[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const now = new Date();
+  const startY = now.getFullYear();
+  const startM = now.getMonth() - (months - 1);
+
+  const bars: WeeklyBar[] = Array.from({ length: months }, (_, i) => {
+    const d = new Date(startY, startM + i, 1);
+    return { label: d.toLocaleDateString("en-US", { month: "short" }), total: 0 };
+  });
+  if (!user) return bars;
+
+  const start = new Date(startY, startM, 1);
+  const { data, error } = await supabase
+    .from("expenses")
+    .select("amount, spent_at")
+    .gte("spent_at", isoDate(start));
+  if (error) throw new Error(error.message);
+
+  for (const row of data ?? []) {
+    const [y, m] = (row.spent_at as string).split("-").map(Number);
+    const idx = (y - start.getFullYear()) * 12 + (m - 1 - start.getMonth());
+    if (idx >= 0 && idx < months) bars[idx].total += Number(row.amount);
+  }
+  return bars;
+}
+
 // Upsert the current month's income + spend allocation (net balance).
 export async function setMonthlyBudget(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient();

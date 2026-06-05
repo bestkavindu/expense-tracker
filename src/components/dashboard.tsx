@@ -221,19 +221,42 @@ function buildStats(o: MonthlyOverview): Stat[] {
   ];
 }
 
+// Reusable bar chart for a series of {label, total}. Last bar is highlighted.
+function SpendingBars({ bars }: { bars: WeeklyBar[] }) {
+  const max = Math.max(1, ...bars.map((b) => b.total));
+  return (
+    <div className="dash-chart">
+      {bars.map((b, i) => {
+        const on = i === bars.length - 1; // current period
+        const h = b.total > 0 ? Math.max(4, (b.total / max) * 100) : 0;
+        return (
+          <div key={b.label} className={"dash-bar" + (on ? " on" : "")}>
+            <span className="v">{b.total > 0 ? fmtCompact(b.total) : ""}</span>
+            <div className="track">
+              <div className="fill" style={{ height: `${h}%` }} title={CUR + fmtMoney(b.total)} />
+            </div>
+            <span className="m">{b.label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function OverviewTab({
   expenses,
   categories,
   overview,
   weekly,
+  monthly,
 }: {
   expenses: Expense[];
   categories: Category[];
   overview: MonthlyOverview;
   weekly: WeeklyBar[];
+  monthly: WeeklyBar[];
 }) {
   const stats = buildStats(overview);
-  const maxWeek = Math.max(1, ...weekly.map((w) => w.total));
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   return (
     <>
@@ -249,21 +272,7 @@ function OverviewTab({
             <h2>Spending</h2>
             <span className="meta">Last {weekly.length} weeks</span>
           </div>
-          <div className="dash-chart">
-            {weekly.map((w, i) => {
-              const on = i === weekly.length - 1; // current week
-              const h = w.total > 0 ? Math.max(4, (w.total / maxWeek) * 100) : 0;
-              return (
-                <div key={w.label} className={"dash-bar" + (on ? " on" : "")}>
-                  <span className="v">{w.total > 0 ? fmtCompact(w.total) : ""}</span>
-                  <div className="track">
-                    <div className="fill" style={{ height: `${h}%` }} title={CUR + fmtMoney(w.total)} />
-                  </div>
-                  <span className="m">{w.label}</span>
-                </div>
-              );
-            })}
-          </div>
+          <SpendingBars bars={weekly} />
         </div>
 
         <div className="dash-panel">
@@ -301,6 +310,14 @@ function OverviewTab({
             })
           )}
         </div>
+      </section>
+
+      <section className="dash-panel" style={{ marginTop: 16 }}>
+        <div className="dash-panel-head">
+          <h2>Monthly spending</h2>
+          <span className="meta">Last {monthly.length} months</span>
+        </div>
+        <SpendingBars bars={monthly} />
       </section>
 
       <section className="dash-panel" style={{ marginTop: 16 }}>
@@ -874,12 +891,14 @@ export function Dashboard({
   expenses,
   overview,
   weekly,
+  monthly,
 }: {
   email: string;
   categories: Category[];
   expenses: Expense[];
   overview: MonthlyOverview;
   weekly: WeeklyBar[];
+  monthly: WeeklyBar[];
 }) {
   void email; // shown in the top bar; greeting kept generic
   const [tab, setTab] = useState<Tab>("Overview");
@@ -930,6 +949,7 @@ export function Dashboard({
             categories={categories}
             overview={overview}
             weekly={weekly}
+            monthly={monthly}
           />
         ) : (
           <CategoriesTab

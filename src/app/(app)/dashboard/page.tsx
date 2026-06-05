@@ -1,7 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { Dashboard } from "@/components/dashboard";
-import { getCategories, getExpenses, getOverview, getWeeklySpending } from "./actions";
+import {
+  getCategories,
+  getExpenses,
+  getMonthlySpending,
+  getOverview,
+  getWeeklySpending,
+} from "./actions";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -17,6 +23,7 @@ export default async function DashboardPage() {
   const expenses = await getExpenses();
   const overview = await getOverview();
   const weekly = await getWeeklySpending();
+  const monthly = await getMonthlySpending();
 
   return (
     <Dashboard
@@ -25,6 +32,7 @@ export default async function DashboardPage() {
       expenses={expenses}
       overview={overview}
       weekly={weekly}
+      monthly={monthly}
     />
   );
 }
