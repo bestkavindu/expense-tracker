@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { createCategory, deleteCategory, type ActionResult } from "@/app/(app)/dashboard/actions";
+import { ICON_KEYS, type Category, type IconKey } from "@/lib/categories";
 import "./dashboard.css";
 
 /* --- inline icons, stroke style matches quiet-auth --- */
@@ -70,6 +72,53 @@ const HeartIcon = () => (
     <path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20Z" />
   </Ic>
 );
+const BillIcon = () => (
+  <Ic>
+    <path d="M7 3h10v18l-2.5-1.5L12 21l-2.5-1.5L7 21z" />
+    <path d="M10 8h4M10 12h4" />
+  </Ic>
+);
+const PlaneIcon = () => (
+  <Ic>
+    <path d="M10.5 3.5 4 14l2 .5 2 3 1.5-3.5 5 2.5L21 4 10.5 3.5Z" />
+  </Ic>
+);
+const TagIcon = () => (
+  <Ic>
+    <path d="M3 12V5a2 2 0 0 1 2-2h7l9 9-9 9z" />
+    <circle cx="7.5" cy="7.5" r="1.1" />
+  </Ic>
+);
+
+/* icon key -> SVG. Keys match ICON_KEYS in src/lib/categories.ts. */
+const ICONS: Record<IconKey, () => React.ReactElement> = {
+  food: FoodIcon,
+  transport: CarIcon,
+  bills: BillIcon,
+  shopping: BagIcon,
+  travel: PlaneIcon,
+  home: HomeIcon,
+  software: CodeIcon,
+  health: HeartIcon,
+  tag: TagIcon,
+};
+const CatIcon = ({ icon }: { icon: string }) => {
+  const C = ICONS[(icon as IconKey)] ?? TagIcon;
+  return <C />;
+};
+
+/* per-icon accent color for the category tiles */
+const ICON_COLOR: Record<string, string> = {
+  food: "#74e3b4",
+  transport: "#e8c468",
+  bills: "#7aa2f7",
+  shopping: "#a78bfa",
+  travel: "#5ec8d8",
+  home: "#7aa2f7",
+  software: "#5ec8d8",
+  health: "#f7768e",
+  tag: "#8b93a1",
+};
 
 /* --- sample data (UI only — wiring to Supabase comes later) --- */
 type Stat = { label: string; value: string; cents?: string; delta: string; sub: string; dir: "pos" | "neg" };
@@ -106,20 +155,6 @@ const BUDGETS: [string, number, number][] = [
   ["Software", 144, 150],
   ["Transport", 96, 120],
 ];
-
-type Category = { name: string; amount: number; pct: number; color: string; icon: React.ReactNode };
-const CATEGORIES: Category[] = [
-  { name: "Housing", amount: 1280.0, pct: 40, color: "#7aa2f7", icon: <HomeIcon /> },
-  { name: "Food & Dining", amount: 642.4, pct: 20, color: "#74e3b4", icon: <FoodIcon /> },
-  { name: "Transport", amount: 418.0, pct: 13, color: "#e8c468", icon: <CarIcon /> },
-  { name: "Shopping", amount: 386.5, pct: 12, color: "#a78bfa", icon: <BagIcon /> },
-  { name: "Software", amount: 300.0, pct: 9, color: "#5ec8d8", icon: <CodeIcon /> },
-  { name: "Health", amount: 191.5, pct: 6, color: "#f7768e", icon: <HeartIcon /> },
-];
-const CAT_TOTAL = CATEGORIES.reduce((s, c) => s + c.amount, 0);
-
-const money = (n: number) =>
-  n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function StatCard({ s }: { s: Stat }) {
   return (
@@ -213,30 +248,130 @@ function OverviewTab() {
   );
 }
 
-function CategoriesTab() {
+const TrashIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13h10l1-13" />
+  </svg>
+);
+const CloseIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M6 6l12 12M18 6 6 18" />
+  </svg>
+);
+
+function CategoryRow({ c }: { c: Category }) {
+  const color = ICON_COLOR[c.icon] ?? ICON_COLOR.tag;
+  const [, action, pending] = useActionState(
+    async (_: ActionResult, fd: FormData) => deleteCategory(fd),
+    {} as ActionResult,
+  );
+  return (
+    <div className="dash-cat" style={{ opacity: pending ? 0.5 : 1 }}>
+      <span className="icon" style={{ color }}>
+        <CatIcon icon={c.icon} />
+      </span>
+      <div className="body">
+        <div className="name">{c.name}</div>
+        {c.description && <div className="desc">{c.description}</div>}
+      </div>
+      <div className="right">
+        {c.is_default ? (
+          <span className="tag-default">Default</span>
+        ) : (
+          <form action={action}>
+            <input type="hidden" name="id" value={c.id} />
+            <button className="dash-cat-del" type="submit" aria-label={`Delete ${c.name}`} disabled={pending}>
+              <TrashIcon />
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AddCategoryModal({ onClose }: { onClose: () => void }) {
+  const [icon, setIcon] = useState<IconKey>("tag");
+  const [state, action, pending] = useActionState(
+    async (_: ActionResult, fd: FormData) => createCategory(fd),
+    {} as ActionResult,
+  );
+
+  useEffect(() => {
+    if (state.ok) onClose();
+  }, [state.ok, onClose]);
+
+  return (
+    <div className="dash-modal-back" onMouseDown={onClose}>
+      <div className="dash-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="dash-modal-head">
+          <h2>New category</h2>
+          <button type="button" className="dash-modal-x" onClick={onClose} aria-label="Close">
+            <CloseIcon />
+          </button>
+        </div>
+        <form action={action} className="dash-modal-form">
+          <input type="hidden" name="icon" value={icon} />
+
+          <label className="dash-field">
+            <span>Name</span>
+            <input name="name" type="text" required maxLength={40} placeholder="e.g. Subscriptions" autoFocus />
+          </label>
+
+          <label className="dash-field">
+            <span>Description</span>
+            <input name="description" type="text" maxLength={120} placeholder="Optional" />
+          </label>
+
+          <div className="dash-field">
+            <span>Icon</span>
+            <div className="dash-icon-pick">
+              {ICON_KEYS.map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  className={"dash-icon-opt" + (icon === k ? " on" : "")}
+                  style={{ color: ICON_COLOR[k] }}
+                  onClick={() => setIcon(k)}
+                  aria-label={k}
+                  aria-pressed={icon === k}
+                >
+                  <CatIcon icon={k} />
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {state.error && <p className="dash-modal-err">{state.error}</p>}
+
+          <div className="dash-modal-foot">
+            <button type="button" className="dash-btn ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="dash-btn" disabled={pending}>
+              {pending ? "Adding…" : "Add category"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function CategoriesTab({ categories, onAdd }: { categories: Category[]; onAdd: () => void }) {
   return (
     <section className="dash-panel">
       <div className="dash-cat-head">
-        <span className="label">Total spent · June</span>
-        <span className="total">${money(CAT_TOTAL)}</span>
+        <span className="label">{categories.length} categories</span>
+        <button type="button" className="dash-btn sm" onClick={onAdd}>
+          <PlusIcon />
+          Add category
+        </button>
       </div>
-      {CATEGORIES.map((c) => (
-        <div className="dash-cat" key={c.name}>
-          <span className="icon" style={{ color: c.color }}>
-            {c.icon}
-          </span>
-          <div className="body">
-            <div className="name">{c.name}</div>
-            <div className="dash-cat-meter">
-              <div className="bar" style={{ width: `${c.pct}%`, background: c.color }} />
-            </div>
-          </div>
-          <div className="right">
-            <div className="amt">${money(c.amount)}</div>
-            <div className="pct">{c.pct}% of spend</div>
-          </div>
-        </div>
+      {categories.map((c) => (
+        <CategoryRow key={c.id} c={c} />
       ))}
+      {categories.length === 0 && <p className="dash-cat-empty">No categories yet.</p>}
     </section>
   );
 }
@@ -245,9 +380,10 @@ const TABS = ["Overview", "Categories"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Quiet Money dashboard with Overview / Categories tabs. */
-export function Dashboard({ email }: { email: string }) {
+export function Dashboard({ email, categories }: { email: string; categories: Category[] }) {
   void email; // shown in the top bar; greeting kept generic
   const [tab, setTab] = useState<Tab>("Overview");
+  const [adding, setAdding] = useState(false);
 
   return (
     <div className="dash">
@@ -274,13 +410,19 @@ export function Dashboard({ email }: { email: string }) {
               onClick={() => setTab(t)}
             >
               {t}
-              {t === "Categories" && <span className="count">{CATEGORIES.length}</span>}
+              {t === "Categories" && <span className="count">{categories.length}</span>}
             </button>
           ))}
         </nav>
 
-        {tab === "Overview" ? <OverviewTab /> : <CategoriesTab />}
+        {tab === "Overview" ? (
+          <OverviewTab />
+        ) : (
+          <CategoriesTab categories={categories} onAdd={() => setAdding(true)} />
+        )}
       </div>
+
+      {adding && <AddCategoryModal onClose={() => setAdding(false)} />}
     </div>
   );
 }

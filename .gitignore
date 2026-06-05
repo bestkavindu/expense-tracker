@@ -40,3 +40,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# stray dev artifacts (Windows: `nul` from a `> nul` redirect crashes Turbopack's CSS scan)
+/nul
+.next-dev.log
