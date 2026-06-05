@@ -10,6 +10,17 @@ export type Category = {
   is_default: boolean;
 };
 
+// A spend entry with its category name/icon resolved (or null if the
+// category was deleted). spent_at is a YYYY-MM-DD date string.
+export type Expense = {
+  id: string;
+  amount: number;
+  spent_at: string;
+  note: string | null;
+  category_name: string | null;
+  category_icon: string | null;
+};
+
 // Icon keys with a matching SVG in the dashboard icon registry.
 export const ICON_KEYS = [
   "food",

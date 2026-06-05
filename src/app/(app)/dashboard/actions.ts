@@ -6,6 +6,7 @@ import {
   DEFAULT_CATEGORIES,
   ICON_KEYS,
   type Category,
+  type Expense,
   type IconKey,
 } from "@/lib/categories";
 
@@ -111,6 +112,35 @@ export async function createExpense(formData: FormData): Promise<ActionResult> {
 
   revalidatePath("/dashboard");
   return { ok: true };
+}
+
+// Fetch the user's expenses, newest first, with category name/icon resolved.
+export async function getExpenses(limit = 50): Promise<Expense[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("expenses")
+    .select("id, amount, spent_at, note, categories ( name, icon )")
+    .order("spent_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map((row) => {
+    const cat = Array.isArray(row.categories) ? row.categories[0] : row.categories;
+    return {
+      id: row.id as string,
+      amount: Number(row.amount),
+      spent_at: row.spent_at as string,
+      note: (row.note as string | null) ?? null,
+      category_name: cat?.name ?? null,
+      category_icon: cat?.icon ?? null,
+    };
+  });
 }
 
 export async function deleteCategory(formData: FormData): Promise<ActionResult> {

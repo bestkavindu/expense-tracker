@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
 import { Dashboard } from "@/components/dashboard";
-import { getCategories } from "./actions";
+import { getCategories, getExpenses } from "./actions";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -14,6 +14,7 @@ export default async function DashboardPage() {
   }
 
   const categories = await getCategories();
+  const expenses = await getExpenses();
 
-  return <Dashboard email={user.email ?? ""} categories={categories} />;
+  return <Dashboard email={user.email ?? ""} categories={categories} expenses={expenses} />;
 }

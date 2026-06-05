@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { createCategory, createExpense, deleteCategory, type ActionResult } from "@/app/(app)/dashboard/actions";
-import { ICON_KEYS, type Category, type IconKey } from "@/lib/categories";
+import { ICON_KEYS, type Category, type Expense, type IconKey } from "@/lib/categories";
 import "./dashboard.css";
 
 /* --- inline icons, stroke style matches quiet-auth --- */
@@ -139,15 +139,6 @@ const CHART: [string, number, boolean][] = [
   ["Jun", 90, true],
 ];
 
-// [dotColor, name, category, amount, positive]
-const TX: [string, string, string, string, boolean][] = [
-  ["#74e3b4", "Salary — Studio Inc", "Income", "+4,200.00", true],
-  ["#8b93a1", "Whole Foods Market", "Groceries", "−86.40", false],
-  ["#8b93a1", "Figma Annual", "Software", "−144.00", false],
-  ["#8b93a1", "Blue Bottle Coffee", "Dining", "−6.75", false],
-  ["#8b93a1", "Uber", "Transport", "−18.20", false],
-];
-
 // monthly budget caps for Overview tab. [name, spent, limit]
 const BUDGETS: [string, number, number][] = [
   ["Groceries", 312, 500],
@@ -176,7 +167,16 @@ function pct(spent: number, limit: number) {
   return Math.min(100, Math.round((spent / limit) * 100));
 }
 
-function OverviewTab() {
+const fmtMoney = (n: number) =>
+  n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// "2026-06-05" -> "Jun 5". Parsed as local to avoid a UTC day shift.
+const fmtDate = (iso: string) => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+};
+
+function OverviewTab({ expenses }: { expenses: Expense[] }) {
   return (
     <>
       <section className="dash-stats">
@@ -230,19 +230,30 @@ function OverviewTab() {
 
       <section className="dash-panel" style={{ marginTop: 16 }}>
         <div className="dash-panel-head">
-          <h2>Recent transactions</h2>
-          <span className="meta">{TX.length} this week</span>
+          <h2>Recent expenses</h2>
+          <span className="meta">{expenses.length} total</span>
         </div>
-        <div className="dash-list">
-          {TX.map((t, i) => (
-            <div className="dash-tx" key={i}>
-              <span className="dot" style={{ background: t[0] }} />
-              <span className="nm">{t[1]}</span>
-              <span className="cat">{t[2]}</span>
-              <span className={"amt" + (t[4] ? " pos" : "")}>{t[3]}</span>
-            </div>
-          ))}
-        </div>
+        {expenses.length === 0 ? (
+          <p className="dash-cat-empty">No expenses yet. Hit “Add expense” to log one.</p>
+        ) : (
+          <div className="dash-list">
+            {expenses.map((e) => {
+              const color = ICON_COLOR[e.category_icon ?? "tag"] ?? ICON_COLOR.tag;
+              return (
+                <div className="dash-tx" key={e.id}>
+                  <span className="icon" style={{ color }}>
+                    <CatIcon icon={e.category_icon ?? "tag"} />
+                  </span>
+                  <span className="nm">{e.note || e.category_name || "Expense"}</span>
+                  <span className="cat">
+                    {e.category_name ?? "Uncategorized"} · {fmtDate(e.spent_at)}
+                  </span>
+                  <span className="amt">−{fmtMoney(e.amount)}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
     </>
   );
@@ -537,7 +548,15 @@ const TABS = ["Overview", "Categories"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Quiet Money dashboard with Overview / Categories tabs. */
-export function Dashboard({ email, categories }: { email: string; categories: Category[] }) {
+export function Dashboard({
+  email,
+  categories,
+  expenses,
+}: {
+  email: string;
+  categories: Category[];
+  expenses: Expense[];
+}) {
   void email; // shown in the top bar; greeting kept generic
   const [tab, setTab] = useState<Tab>("Overview");
   const [adding, setAdding] = useState(false);
@@ -574,7 +593,7 @@ export function Dashboard({ email, categories }: { email: string; categories: Ca
         </nav>
 
         {tab === "Overview" ? (
-          <OverviewTab />
+          <OverviewTab expenses={expenses} />
         ) : (
           <CategoriesTab categories={categories} onAdd={() => setAdding(true)} />
         )}

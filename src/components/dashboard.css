@@ -365,6 +365,21 @@
   border-radius: 50%;
   flex: none;
 }
+.dash-tx .icon {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.dash-tx .icon svg {
+  width: 17px;
+  height: 17px;
+}
 .dash-tx .nm {
   font-size: 16.5px;
   color: var(--txt);
