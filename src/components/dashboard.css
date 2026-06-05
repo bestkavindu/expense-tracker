@@ -323,7 +323,8 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 .dash-bar .fill {
   width: 100%;
@@ -334,6 +335,17 @@
 .dash-bar.on .fill {
   background: linear-gradient(180deg, var(--mint), var(--mint-d));
   border-top: none;
+}
+.dash-bar .v {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-height: 14px;
+  line-height: 14px;
+}
+.dash-bar.on .v {
+  color: var(--mint);
 }
 .dash-bar .m {
   font-size: 13px;
@@ -463,6 +475,19 @@
   }
   .dash-h1 {
     font-size: 30px;
+  }
+  /* stack the header and let the action buttons share a full-width row */
+  .dash-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .dash-actions {
+    width: 100%;
+  }
+  .dash-actions .dash-chip,
+  .dash-actions .dash-btn {
+    flex: 1;
+    justify-content: center;
   }
 }
 

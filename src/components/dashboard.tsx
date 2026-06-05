@@ -1,8 +1,21 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { createCategory, createExpense, deleteCategory, type ActionResult } from "@/app/(app)/dashboard/actions";
-import { ICON_KEYS, type Category, type Expense, type IconKey } from "@/lib/categories";
+import {
+  createCategory,
+  createExpense,
+  deleteCategory,
+  setMonthlyBudget,
+  type ActionResult,
+} from "@/app/(app)/dashboard/actions";
+import {
+  ICON_KEYS,
+  type Category,
+  type Expense,
+  type IconKey,
+  type MonthlyOverview,
+  type WeeklyBar,
+} from "@/lib/categories";
 import "./dashboard.css";
 
 /* --- inline icons, stroke style matches quiet-auth --- */
@@ -89,6 +102,12 @@ const TagIcon = () => (
     <circle cx="7.5" cy="7.5" r="1.1" />
   </Ic>
 );
+const WalletIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 7a2 2 0 0 1 2-2h12v4M3 7v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6H7" />
+    <circle cx="17" cy="14" r="1" />
+  </svg>
+);
 
 /* icon key -> SVG. Keys match ICON_KEYS in src/lib/categories.ts. */
 const ICONS: Record<IconKey, () => React.ReactElement> = {
@@ -120,32 +139,7 @@ const ICON_COLOR: Record<string, string> = {
   tag: "#8b93a1",
 };
 
-/* --- sample data (UI only — wiring to Supabase comes later) --- */
 type Stat = { label: string; value: string; cents?: string; delta: string; sub: string; dir: "pos" | "neg" };
-const STATS: Stat[] = [
-  { label: "Net balance · June", value: "$12,480", cents: ".50", delta: "8.2%", sub: "vs last month", dir: "pos" },
-  { label: "Income", value: "$4,200", cents: ".00", delta: "0.0%", sub: "vs last month", dir: "pos" },
-  { label: "Spending", value: "$1,860", cents: ".40", delta: "12.4%", sub: "vs last month", dir: "neg" },
-  { label: "Savings rate", value: "56", cents: "%", delta: "3.1pts", sub: "vs last month", dir: "pos" },
-];
-
-// [month, height%, active]
-const CHART: [string, number, boolean][] = [
-  ["Jan", 48, false],
-  ["Feb", 62, false],
-  ["Mar", 41, false],
-  ["Apr", 73, false],
-  ["May", 55, false],
-  ["Jun", 90, true],
-];
-
-// monthly budget caps for Overview tab. [name, spent, limit]
-const BUDGETS: [string, number, number][] = [
-  ["Groceries", 312, 500],
-  ["Dining", 188, 250],
-  ["Software", 144, 150],
-  ["Transport", 96, 120],
-];
 
 function StatCard({ s }: { s: Stat }) {
   return (
@@ -167,8 +161,16 @@ function pct(spent: number, limit: number) {
   return Math.min(100, Math.round((spent / limit) * 100));
 }
 
+// Main currency: Sri Lankan rupee. Symbol kept as a single const for easy swap.
+const CUR = "Rs ";
 const fmtMoney = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Compact amount for tight spots (chart labels): 1234 -> "1.2k", 950 -> "950".
+const fmtCompact = (n: number) => {
+  if (n >= 1000) return (n / 1000).toFixed(n >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k";
+  return Math.round(n).toString();
+};
 
 // "2026-06-05" -> "Jun 5". Parsed as local to avoid a UTC day shift.
 const fmtDate = (iso: string) => {
@@ -176,11 +178,61 @@ const fmtDate = (iso: string) => {
   return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 };
 
-function OverviewTab({ expenses }: { expenses: Expense[] }) {
+// "Rs 1,860" + ".40", with a leading minus pulled outside the symbol.
+const money = (n: number) => {
+  const [int, dec] = fmtMoney(Math.abs(n)).split(".");
+  return { value: (n < 0 ? "-" + CUR : CUR) + int, cents: "." + dec };
+};
+
+// Percent change vs last month. `goodWhenUp` flips the pos/neg color for
+// metrics where a rise is bad (spending). No baseline → neutral dash.
+function deltaOf(cur: number, prev: number, goodWhenUp: boolean): Pick<Stat, "delta" | "dir" | "sub"> {
+  if (prev === 0) return { delta: "—", dir: "pos", sub: "no last month" };
+  const change = ((cur - prev) / prev) * 100;
+  const up = change >= 0;
+  return {
+    delta: (up ? "+" : "") + change.toFixed(1) + "%",
+    dir: (goodWhenUp ? up : !up) ? "pos" : "neg",
+    sub: "vs last month",
+  };
+}
+
+function buildStats(o: MonthlyOverview): Stat[] {
+  const net = o.allocation - o.spending;
+  const prevNet = o.prevAllocation - o.prevSpending;
+  const rate = o.income > 0 ? ((o.income - o.spending) / o.income) * 100 : 0;
+  const prevRate = o.prevIncome > 0 ? ((o.prevIncome - o.prevSpending) / o.prevIncome) * 100 : 0;
+  const pts = rate - prevRate;
+  return [
+    { label: `Net balance · ${o.monthLabel}`, ...money(net), ...deltaOf(net, prevNet, true) },
+    { label: "Income", ...money(o.income), ...deltaOf(o.income, o.prevIncome, true) },
+    { label: "Spending", ...money(o.spending), ...deltaOf(o.spending, o.prevSpending, false) },
+    {
+      label: "Savings rate",
+      value: Math.round(rate).toString(),
+      cents: "%",
+      delta: (pts >= 0 ? "+" : "") + pts.toFixed(1) + "pts",
+      dir: pts >= 0 ? "pos" : "neg",
+      sub: o.prevIncome > 0 ? "vs last month" : "this month",
+    },
+  ];
+}
+
+function OverviewTab({
+  expenses,
+  overview,
+  weekly,
+}: {
+  expenses: Expense[];
+  overview: MonthlyOverview;
+  weekly: WeeklyBar[];
+}) {
+  const stats = buildStats(overview);
+  const maxWeek = Math.max(1, ...weekly.map((w) => w.total));
   return (
     <>
       <section className="dash-stats">
-        {STATS.map((s) => (
+        {stats.map((s) => (
           <StatCard key={s.label} s={s} />
         ))}
       </section>
@@ -189,42 +241,59 @@ function OverviewTab({ expenses }: { expenses: Expense[] }) {
         <div className="dash-panel">
           <div className="dash-panel-head">
             <h2>Spending</h2>
-            <span className="meta">Last 6 months</span>
+            <span className="meta">Last {weekly.length} weeks</span>
           </div>
           <div className="dash-chart">
-            {CHART.map(([m, h, on]) => (
-              <div key={m} className={"dash-bar" + (on ? " on" : "")}>
-                <div className="track">
-                  <div className="fill" style={{ height: `${h}%` }} />
+            {weekly.map((w, i) => {
+              const on = i === weekly.length - 1; // current week
+              const h = w.total > 0 ? Math.max(4, (w.total / maxWeek) * 100) : 0;
+              return (
+                <div key={w.label} className={"dash-bar" + (on ? " on" : "")}>
+                  <span className="v">{w.total > 0 ? fmtCompact(w.total) : ""}</span>
+                  <div className="track">
+                    <div className="fill" style={{ height: `${h}%` }} title={CUR + fmtMoney(w.total)} />
+                  </div>
+                  <span className="m">{w.label}</span>
                 </div>
-                <span className="m">{m}</span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
         <div className="dash-panel">
           <div className="dash-panel-head">
             <h2>Budgets</h2>
-            <span className="meta">June</span>
+            <span className="meta">{overview.monthLabel}</span>
           </div>
-          {BUDGETS.map(([name, spent, limit]) => {
-            const p = pct(spent, limit);
-            const cls = p >= 100 ? "over" : p >= 85 ? "warn" : "";
-            return (
-              <div className="dash-budget" key={name}>
-                <div className="top">
-                  <span className="name">{name}</span>
-                  <span className="nums">
-                    <b>${spent}</b> / ${limit}
-                  </span>
+          {overview.budgets.length === 0 ? (
+            <p className="dash-cat-empty">
+              No spending yet. Log an expense and its category shows up here.
+            </p>
+          ) : (
+            overview.budgets.map((b) => {
+              const hasLimit = b.limit > 0;
+              // With a limit: spent/limit + over/warn colors. Without: share of
+              // this month's total spending, neutral bar.
+              const p = hasLimit
+                ? pct(b.spent, b.limit)
+                : pct(b.spent, overview.spending || b.spent);
+              const cls = hasLimit ? (p >= 100 ? "over" : p >= 85 ? "warn" : "") : "";
+              return (
+                <div className="dash-budget" key={b.name}>
+                  <div className="top">
+                    <span className="name">{b.name}</span>
+                    <span className="nums">
+                      <b>{CUR}{fmtMoney(b.spent)}</b>
+                      {hasLimit && <> / {CUR}{fmtMoney(b.limit)}</>}
+                    </span>
+                  </div>
+                  <div className="dash-meter">
+                    <div className={"bar " + cls} style={{ width: `${p}%` }} />
+                  </div>
                 </div>
-                <div className="dash-meter">
-                  <div className={"bar " + cls} style={{ width: `${p}%` }} />
-                </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
       </section>
 
@@ -248,7 +317,7 @@ function OverviewTab({ expenses }: { expenses: Expense[] }) {
                   <span className="cat">
                     {e.category_name ?? "Uncategorized"} · {fmtDate(e.spent_at)}
                   </span>
-                  <span className="amt">−{fmtMoney(e.amount)}</span>
+                  <span className="amt">−{CUR}{fmtMoney(e.amount)}</span>
                 </div>
               );
             })}
@@ -332,6 +401,18 @@ function AddCategoryModal({ onClose }: { onClose: () => void }) {
           <label className="dash-field">
             <span>Description</span>
             <input name="description" type="text" maxLength={120} placeholder="Optional" />
+          </label>
+
+          <label className="dash-field">
+            <span>Monthly limit</span>
+            <input
+              name="monthly_limit"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              placeholder="Optional — shows in Budgets"
+            />
           </label>
 
           <div className="dash-field">
@@ -526,6 +607,81 @@ function AddExpenseModal({
   );
 }
 
+function BudgetModal({ overview, onClose }: { overview: MonthlyOverview; onClose: () => void }) {
+  const [state, action, pending] = useActionState(
+    async (_: ActionResult, fd: FormData) => setMonthlyBudget(fd),
+    {} as ActionResult,
+  );
+
+  useEffect(() => {
+    if (state.ok) onClose();
+  }, [state.ok, onClose]);
+
+  // New month with no saved row → carry last month's figures as editable
+  // defaults (not yet saved until the user confirms).
+  const carried = !overview.isSet && (overview.prevIncome > 0 || overview.prevAllocation > 0);
+  const incomeDefault = overview.isSet ? overview.income : overview.prevIncome;
+  const allocationDefault = overview.isSet ? overview.allocation : overview.prevAllocation;
+
+  return (
+    <div className="dash-modal-back" onMouseDown={onClose}>
+      <div className="dash-modal" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="dash-modal-head">
+          <h2>Income &amp; balance · {overview.monthLabel}</h2>
+          <button type="button" className="dash-modal-x" onClick={onClose} aria-label="Close">
+            <CloseIcon />
+          </button>
+        </div>
+        <form action={action} className="dash-modal-form">
+          <label className="dash-field">
+            <span>Income</span>
+            <input
+              name="income"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              defaultValue={incomeDefault || ""}
+              placeholder="0.00"
+              autoFocus
+            />
+          </label>
+
+          <label className="dash-field">
+            <span>Net balance (allocated to spend)</span>
+            <input
+              name="allocation"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0"
+              defaultValue={allocationDefault || ""}
+              placeholder="0.00"
+            />
+          </label>
+
+          <p className="dash-exp-summary">
+            {carried
+              ? "Carried over from last month — edit and save to confirm for this month."
+              : "Remaining net balance = allocation minus expenses logged this month."}
+          </p>
+
+          {state.error && <p className="dash-modal-err">{state.error}</p>}
+
+          <div className="dash-modal-foot">
+            <button type="button" className="dash-btn ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="dash-btn" disabled={pending}>
+              {pending ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 function CategoriesTab({ categories, onAdd }: { categories: Category[]; onAdd: () => void }) {
   return (
     <section className="dash-panel">
@@ -552,15 +708,20 @@ export function Dashboard({
   email,
   categories,
   expenses,
+  overview,
+  weekly,
 }: {
   email: string;
   categories: Category[];
   expenses: Expense[];
+  overview: MonthlyOverview;
+  weekly: WeeklyBar[];
 }) {
   void email; // shown in the top bar; greeting kept generic
   const [tab, setTab] = useState<Tab>("Overview");
   const [adding, setAdding] = useState(false);
   const [addingExpense, setAddingExpense] = useState(false);
+  const [editingBudget, setEditingBudget] = useState(false);
 
   return (
     <div className="dash">
@@ -571,6 +732,12 @@ export function Dashboard({
             <p className="dash-sub">Welcome back — here&apos;s your money this month.</p>
           </div>
           <div className="dash-actions">
+            <button className="dash-chip" type="button" onClick={() => setEditingBudget(true)}>
+              <span className="ic">
+                <WalletIcon />
+              </span>
+              Income &amp; balance
+            </button>
             <button className="dash-btn" type="button" onClick={() => setAddingExpense(true)}>
               <PlusIcon />
               Add expense
@@ -593,7 +760,7 @@ export function Dashboard({
         </nav>
 
         {tab === "Overview" ? (
-          <OverviewTab expenses={expenses} />
+          <OverviewTab expenses={expenses} overview={overview} weekly={weekly} />
         ) : (
           <CategoriesTab categories={categories} onAdd={() => setAdding(true)} />
         )}
@@ -602,6 +769,9 @@ export function Dashboard({
       {adding && <AddCategoryModal onClose={() => setAdding(false)} />}
       {addingExpense && (
         <AddExpenseModal categories={categories} onClose={() => setAddingExpense(false)} />
+      )}
+      {editingBudget && (
+        <BudgetModal overview={overview} onClose={() => setEditingBudget(false)} />
       )}
     </div>
   );

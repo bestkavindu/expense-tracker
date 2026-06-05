@@ -8,6 +8,21 @@ export type Category = {
   description: string | null;
   icon: string;
   is_default: boolean;
+  monthly_limit: number; // 0 = no limit; drives the Budgets card
+};
+
+// One bar of the weekly Spending chart: a week's total spend.
+export type WeeklyBar = {
+  label: string; // week-start, e.g. "Jun 2"
+  total: number;
+};
+
+// One row of the Budgets card: a category's spend this month vs its limit.
+export type BudgetRow = {
+  name: string;
+  icon: string;
+  spent: number;
+  limit: number;
 };
 
 // A spend entry with its category name/icon resolved (or null if the
@@ -19,6 +34,21 @@ export type Expense = {
   note: string | null;
   category_name: string | null;
   category_icon: string | null;
+};
+
+// Current-month money figures for the Overview stat cards, plus the prior
+// month for deltas. `allocation` is the net balance the user set; remaining
+// net balance = allocation - spending.
+export type MonthlyOverview = {
+  monthLabel: string;
+  isSet: boolean; // true once the user saves income/allocation for this month
+  income: number;
+  allocation: number;
+  spending: number;
+  prevIncome: number;
+  prevAllocation: number;
+  prevSpending: number;
+  budgets: BudgetRow[]; // per-category spend vs limit, current month
 };
 
 // Icon keys with a matching SVG in the dashboard icon registry.
