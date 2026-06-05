@@ -8,7 +8,7 @@ export default function AppLayout({
   return (
     <>
       <Header />
-      <main className="flex flex-1 flex-col">{children}</main>
+      <main className="flex flex-1 flex-col bg-[#08090b]">{children}</main>
     </>
   );
 }

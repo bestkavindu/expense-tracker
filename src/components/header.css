@@ -1,0 +1,76 @@
+/* App top bar — "Quiet Money" dark chrome, matches dashboard. */
+.tally-bar {
+  --bg: #08090b;
+  --line: #1b1e24;
+  --txt: #eceef1;
+  --muted: #7c828c;
+  --mint: #74e3b4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 40px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+  color: var(--txt);
+  font-family: var(--font-asap), "Asap Condensed", sans-serif;
+}
+.tally-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--mint);
+  text-decoration: none;
+}
+.tally-brand b {
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--txt);
+}
+.tally-nav {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+.tally-email {
+  font-size: 15px;
+  color: var(--muted);
+}
+.tally-signout {
+  height: 38px;
+  padding: 0 15px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt);
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.tally-signout:hover {
+  border-color: var(--mint);
+  color: var(--mint);
+}
+.tally-signin {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 16px;
+  border-radius: 10px;
+  background: var(--mint);
+  color: #052017;
+  text-decoration: none;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+@media (max-width: 560px) {
+  .tally-bar {
+    padding: 14px 20px;
+  }
+  .tally-email {
+    display: none;
+  }
+}
