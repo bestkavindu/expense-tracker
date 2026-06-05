@@ -412,6 +412,12 @@
 .dash-tx .amt.pos {
   color: var(--mint);
 }
+.dash-tx-acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+}
 
 /* budgets */
 .dash-budget {
@@ -625,7 +631,8 @@
   color: var(--muted);
   font-weight: 600;
 }
-.dash-field input {
+.dash-field input,
+.dash-field select {
   height: 42px;
   padding: 0 14px;
   border-radius: 11px;
@@ -635,7 +642,8 @@
   font-family: inherit;
   font-size: 15px;
 }
-.dash-field input:focus {
+.dash-field input:focus,
+.dash-field select:focus {
   outline: none;
   border-color: var(--mint);
 }

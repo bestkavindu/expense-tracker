@@ -178,7 +178,7 @@ export async function getExpenses(limit = 50): Promise<Expense[]> {
 
   const { data, error } = await supabase
     .from("expenses")
-    .select("id, amount, spent_at, note, categories ( name, icon )")
+    .select("id, amount, spent_at, note, category_id, categories ( name, icon )")
     .order("spent_at", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -191,10 +191,61 @@ export async function getExpenses(limit = 50): Promise<Expense[]> {
       amount: Number(row.amount),
       spent_at: row.spent_at as string,
       note: (row.note as string | null) ?? null,
+      category_id: (row.category_id as string | null) ?? null,
       category_name: cat?.name ?? null,
       category_icon: cat?.icon ?? null,
     };
   });
+}
+
+export async function updateExpense(formData: FormData): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Missing expense id." };
+
+  const categoryId = String(formData.get("category_id") ?? "").trim();
+  const spentAt = String(formData.get("spent_at") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  const amount = Number(formData.get("amount"));
+
+  if (!categoryId) return { error: "Pick a category." };
+  if (!spentAt || Number.isNaN(Date.parse(spentAt))) return { error: "Pick a valid date." };
+  if (!Number.isFinite(amount) || amount <= 0) return { error: "Enter an amount greater than 0." };
+
+  const { error } = await supabase
+    .from("expenses")
+    .update({ category_id: categoryId, amount, spent_at: spentAt, note: note || null })
+    .eq("id", id);
+  if (error) {
+    if (error.code === "23503") return { error: "That category no longer exists." };
+    return { error: error.message };
+  }
+
+  revalidatePath("/dashboard");
+  return { ok: true };
+}
+
+export async function deleteExpense(formData: FormData): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not signed in." };
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Missing expense id." };
+
+  // RLS scopes the delete to the owner.
+  const { error } = await supabase.from("expenses").delete().eq("id", id);
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard");
+  return {};
 }
 
 // First-of-month "YYYY-MM-01" string, offset by `monthsBack` months.

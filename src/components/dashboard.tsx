@@ -5,8 +5,10 @@ import {
   createCategory,
   createExpense,
   deleteCategory,
+  deleteExpense,
   setMonthlyBudget,
   updateCategory,
+  updateExpense,
   type ActionResult,
 } from "@/app/(app)/dashboard/actions";
 import {
@@ -221,15 +223,18 @@ function buildStats(o: MonthlyOverview): Stat[] {
 
 function OverviewTab({
   expenses,
+  categories,
   overview,
   weekly,
 }: {
   expenses: Expense[];
+  categories: Category[];
   overview: MonthlyOverview;
   weekly: WeeklyBar[];
 }) {
   const stats = buildStats(overview);
   const maxWeek = Math.max(1, ...weekly.map((w) => w.total));
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   return (
     <>
       <section className="dash-stats">
@@ -307,25 +312,136 @@ function OverviewTab({
           <p className="dash-cat-empty">No expenses yet. Hit “Add expense” to log one.</p>
         ) : (
           <div className="dash-list">
-            {expenses.map((e) => {
-              const color = ICON_COLOR[e.category_icon ?? "tag"] ?? ICON_COLOR.tag;
-              return (
-                <div className="dash-tx" key={e.id}>
-                  <span className="icon" style={{ color }}>
-                    <CatIcon icon={e.category_icon ?? "tag"} />
-                  </span>
-                  <span className="nm">{e.note || e.category_name || "Expense"}</span>
-                  <span className="cat">
-                    {e.category_name ?? "Uncategorized"} · {fmtDate(e.spent_at)}
-                  </span>
-                  <span className="amt">−{CUR}{fmtMoney(e.amount)}</span>
-                </div>
-              );
-            })}
+            {expenses.map((e) => (
+              <ExpenseRow key={e.id} e={e} onEdit={setEditingExpense} />
+            ))}
           </div>
         )}
       </section>
+
+      {editingExpense && (
+        <EditExpenseModal
+          expense={editingExpense}
+          categories={categories}
+          onClose={() => setEditingExpense(null)}
+        />
+      )}
     </>
+  );
+}
+
+function ExpenseRow({ e, onEdit }: { e: Expense; onEdit: (e: Expense) => void }) {
+  const color = ICON_COLOR[e.category_icon ?? "tag"] ?? ICON_COLOR.tag;
+  const [, action, pending] = useActionState(
+    async (_: ActionResult, fd: FormData) => deleteExpense(fd),
+    {} as ActionResult,
+  );
+  return (
+    <div className="dash-tx" style={{ opacity: pending ? 0.5 : 1 }}>
+      <span className="icon" style={{ color }}>
+        <CatIcon icon={e.category_icon ?? "tag"} />
+      </span>
+      <span className="nm">{e.note || e.category_name || "Expense"}</span>
+      <span className="cat">
+        {e.category_name ?? "Uncategorized"} · {fmtDate(e.spent_at)}
+      </span>
+      <span className="amt">−{CUR}{fmtMoney(e.amount)}</span>
+      <span className="dash-tx-acts">
+        <button className="dash-cat-del" type="button" aria-label="Edit expense" onClick={() => onEdit(e)}>
+          <EditIcon />
+        </button>
+        <form action={action}>
+          <input type="hidden" name="id" value={e.id} />
+          <button className="dash-cat-del" type="submit" aria-label="Delete expense" disabled={pending}>
+            <TrashIcon />
+          </button>
+        </form>
+      </span>
+    </div>
+  );
+}
+
+// Single-form edit for an existing expense (category, date, amount, note).
+function EditExpenseModal({
+  expense,
+  categories,
+  onClose,
+}: {
+  expense: Expense;
+  categories: Category[];
+  onClose: () => void;
+}) {
+  const [state, action, pending] = useActionState(
+    async (_: ActionResult, fd: FormData) => updateExpense(fd),
+    {} as ActionResult,
+  );
+
+  useEffect(() => {
+    if (state.ok) onClose();
+  }, [state.ok, onClose]);
+
+  return (
+    <div className="dash-modal-back" onMouseDown={onClose}>
+      <div className="dash-modal" onMouseDown={(ev) => ev.stopPropagation()}>
+        <div className="dash-modal-head">
+          <h2>Edit expense</h2>
+          <button type="button" className="dash-modal-x" onClick={onClose} aria-label="Close">
+            <CloseIcon />
+          </button>
+        </div>
+        <form action={action} className="dash-modal-form">
+          <input type="hidden" name="id" value={expense.id} />
+
+          <label className="dash-field">
+            <span>Category</span>
+            <select name="category_id" defaultValue={expense.category_id ?? ""} required>
+              <option value="" disabled>
+                Pick a category
+              </option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="dash-field">
+            <span>Date</span>
+            <input name="spent_at" type="date" defaultValue={expense.spent_at} max={todayISO()} />
+          </label>
+
+          <label className="dash-field">
+            <span>Amount</span>
+            <input
+              name="amount"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              min="0.01"
+              required
+              defaultValue={expense.amount}
+            />
+          </label>
+
+          <label className="dash-field">
+            <span>Note</span>
+            <input name="note" type="text" maxLength={120} placeholder="Optional" defaultValue={expense.note ?? ""} />
+          </label>
+
+          {state.error && <p className="dash-modal-err">{state.error}</p>}
+
+          <div className="dash-modal-foot">
+            <button type="button" className="dash-btn ghost" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" className="dash-btn" disabled={pending}>
+              {pending ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 
@@ -809,7 +925,12 @@ export function Dashboard({
         </nav>
 
         {tab === "Overview" ? (
-          <OverviewTab expenses={expenses} overview={overview} weekly={weekly} />
+          <OverviewTab
+            expenses={expenses}
+            categories={categories}
+            overview={overview}
+            weekly={weekly}
+          />
         ) : (
           <CategoriesTab
             categories={categories}

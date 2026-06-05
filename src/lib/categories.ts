@@ -32,6 +32,7 @@ export type Expense = {
   amount: number;
   spent_at: string;
   note: string | null;
+  category_id: string | null;
   category_name: string | null;
   category_icon: string | null;
 };
