@@ -1,11 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   createCategory,
   createExpense,
   deleteCategory,
   deleteExpense,
+  getExpensesByMonth,
+  getOverviewData,
   setMonthlyBudget,
   updateCategory,
   updateExpense,
@@ -249,17 +251,37 @@ function OverviewTab({
   overview,
   weekly,
   monthly,
+  month,
+  setMonth,
+  loading,
+  onChanged,
 }: {
   expenses: Expense[];
   categories: Category[];
   overview: MonthlyOverview;
   weekly: WeeklyBar[];
   monthly: WeeklyBar[];
+  month: string;
+  setMonth: (m: string) => void;
+  loading: boolean;
+  onChanged: () => void;
 }) {
   const stats = buildStats(overview);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   return (
     <>
+      <div className="dash-filter">
+        <input
+          type="month"
+          className="dash-month"
+          value={month}
+          max={currentYM()}
+          onChange={(e) => setMonth(e.target.value)}
+          aria-label="Filter dashboard by month"
+        />
+        {loading && <span className="dash-filter-load">Updating…</span>}
+      </div>
+
       <section className="dash-stats">
         {stats.map((s) => (
           <StatCard key={s.label} s={s} />
@@ -330,7 +352,7 @@ function OverviewTab({
         ) : (
           <div className="dash-list">
             {expenses.map((e) => (
-              <ExpenseRow key={e.id} e={e} onEdit={setEditingExpense} />
+              <ExpenseRow key={e.id} e={e} onEdit={setEditingExpense} onChanged={onChanged} />
             ))}
           </div>
         )}
@@ -340,19 +362,34 @@ function OverviewTab({
         <EditExpenseModal
           expense={editingExpense}
           categories={categories}
-          onClose={() => setEditingExpense(null)}
+          onClose={() => {
+            setEditingExpense(null);
+            onChanged();
+          }}
         />
       )}
     </>
   );
 }
 
-function ExpenseRow({ e, onEdit }: { e: Expense; onEdit: (e: Expense) => void }) {
+function ExpenseRow({
+  e,
+  onEdit,
+  onChanged,
+}: {
+  e: Expense;
+  onEdit: (e: Expense) => void;
+  onChanged?: () => void;
+}) {
   const color = ICON_COLOR[e.category_icon ?? "tag"] ?? ICON_COLOR.tag;
-  const [, action, pending] = useActionState(
+  const [state, action, pending] = useActionState(
     async (_: ActionResult, fd: FormData) => deleteExpense(fd),
     {} as ActionResult,
   );
+
+  useEffect(() => {
+    if (state.ok) onChanged?.();
+  }, [state.ok, onChanged]);
   return (
     <div className="dash-tx" style={{ opacity: pending ? 0.5 : 1 }}>
       <span className="icon" style={{ color }}>
@@ -780,7 +817,15 @@ function AddExpenseModal({
   );
 }
 
-function BudgetModal({ overview, onClose }: { overview: MonthlyOverview; onClose: () => void }) {
+function BudgetModal({
+  overview,
+  month,
+  onClose,
+}: {
+  overview: MonthlyOverview;
+  month: string;
+  onClose: () => void;
+}) {
   const [state, action, pending] = useActionState(
     async (_: ActionResult, fd: FormData) => setMonthlyBudget(fd),
     {} as ActionResult,
@@ -806,6 +851,7 @@ function BudgetModal({ overview, onClose }: { overview: MonthlyOverview; onClose
           </button>
         </div>
         <form action={action} className="dash-modal-form">
+          <input type="hidden" name="month" value={month} />
           <label className="dash-field">
             <span>Income</span>
             <input
@@ -855,6 +901,86 @@ function BudgetModal({ overview, onClose }: { overview: MonthlyOverview; onClose
   );
 }
 
+// Current month as "YYYY-MM" for the <input type="month"> default.
+function currentYM() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+// "2026-06" -> "June 2026"
+function ymLabel(ym: string) {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+// All expenses for a chosen month, with a month filter. Data is fetched on the
+// client so changing the month doesn't reload the page; edits/deletes refetch.
+function ExpensesTab({ categories }: { categories: Category[] }) {
+  const [month, setMonth] = useState(currentYM());
+  const [rows, setRows] = useState<Expense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<Expense | null>(null);
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    getExpensesByMonth(month).then((r) => {
+      if (active) {
+        setRows(r);
+        setLoading(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [month, reload]);
+
+  const total = rows.reduce((s, r) => s + r.amount, 0);
+
+  return (
+    <section className="dash-panel">
+      <div className="dash-cat-head">
+        <span className="label">
+          {ymLabel(month)} · {rows.length} {rows.length === 1 ? "expense" : "expenses"} ·{" "}
+          {CUR}
+          {fmtMoney(total)}
+        </span>
+        <input
+          type="month"
+          className="dash-month"
+          value={month}
+          max={currentYM()}
+          onChange={(e) => setMonth(e.target.value)}
+          aria-label="Filter by month"
+        />
+      </div>
+
+      {loading ? (
+        <p className="dash-cat-empty">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="dash-cat-empty">No expenses in {ymLabel(month)}.</p>
+      ) : (
+        <div className="dash-list">
+          {rows.map((e) => (
+            <ExpenseRow key={e.id} e={e} onEdit={setEditing} onChanged={() => setReload((x) => x + 1)} />
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <EditExpenseModal
+          expense={editing}
+          categories={categories}
+          onClose={() => {
+            setEditing(null);
+            setReload((x) => x + 1);
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
 function CategoriesTab({
   categories,
   onAdd,
@@ -881,7 +1007,7 @@ function CategoriesTab({
   );
 }
 
-const TABS = ["Overview", "Categories"] as const;
+const TABS = ["Overview", "Expenses", "Categories"] as const;
 type Tab = (typeof TABS)[number];
 
 /** Quiet Money dashboard with Overview / Categories tabs. */
@@ -906,6 +1032,34 @@ export function Dashboard({
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [addingExpense, setAddingExpense] = useState(false);
   const [editingBudget, setEditingBudget] = useState(false);
+
+  // Overview data is filterable by month. Props seed the current month; any
+  // other month (or a mutation) refetches client-side via getOverviewData.
+  const [month, setMonth] = useState(currentYM());
+  const [reloadKey, setReloadKey] = useState(0);
+  const [data, setData] = useState({ overview, weekly, monthly, expenses });
+  const [loading, setLoading] = useState(false);
+  const skipFirst = useRef(true);
+
+  useEffect(() => {
+    if (skipFirst.current) {
+      skipFirst.current = false;
+      return;
+    }
+    let active = true;
+    setLoading(true);
+    getOverviewData(month).then((d) => {
+      if (active) {
+        setData(d);
+        setLoading(false);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [month, reloadKey]);
+
+  const bump = () => setReloadKey((x) => x + 1);
 
   return (
     <div className="dash">
@@ -943,15 +1097,21 @@ export function Dashboard({
           ))}
         </nav>
 
-        {tab === "Overview" ? (
+        {tab === "Overview" && (
           <OverviewTab
-            expenses={expenses}
+            expenses={data.expenses}
             categories={categories}
-            overview={overview}
-            weekly={weekly}
-            monthly={monthly}
+            overview={data.overview}
+            weekly={data.weekly}
+            monthly={data.monthly}
+            month={month}
+            setMonth={setMonth}
+            loading={loading}
+            onChanged={bump}
           />
-        ) : (
+        )}
+        {tab === "Expenses" && <ExpensesTab categories={categories} />}
+        {tab === "Categories" && (
           <CategoriesTab
             categories={categories}
             onAdd={() => setAdding(true)}
@@ -965,10 +1125,23 @@ export function Dashboard({
         <CategoryModal category={editingCategory} onClose={() => setEditingCategory(null)} />
       )}
       {addingExpense && (
-        <AddExpenseModal categories={categories} onClose={() => setAddingExpense(false)} />
+        <AddExpenseModal
+          categories={categories}
+          onClose={() => {
+            setAddingExpense(false);
+            bump();
+          }}
+        />
       )}
       {editingBudget && (
-        <BudgetModal overview={overview} onClose={() => setEditingBudget(false)} />
+        <BudgetModal
+          overview={data.overview}
+          month={month}
+          onClose={() => {
+            setEditingBudget(false);
+            bump();
+          }}
+        />
       )}
     </div>
   );

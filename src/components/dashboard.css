@@ -554,6 +554,31 @@
   padding: 24px 0;
   text-align: center;
 }
+.dash-filter {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.dash-filter-load {
+  font-size: 13.5px;
+  color: var(--muted);
+}
+.dash-month {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 11px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--txt);
+  font-family: inherit;
+  font-size: 14.5px;
+  color-scheme: dark;
+}
+.dash-month:focus {
+  outline: none;
+  border-color: var(--mint);
+}
 
 /* smaller / ghost button variants */
 .dash-btn.sm {

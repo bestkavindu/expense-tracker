@@ -168,6 +168,22 @@ export async function createExpense(formData: FormData): Promise<ActionResult> {
   return { ok: true };
 }
 
+const EXPENSE_SELECT = "id, amount, spent_at, note, category_id, categories ( name, icon )";
+
+function mapExpense(row: Record<string, unknown>): Expense {
+  const c = row.categories as { name?: string; icon?: string } | { name?: string; icon?: string }[] | null;
+  const cat = Array.isArray(c) ? c[0] : c;
+  return {
+    id: row.id as string,
+    amount: Number(row.amount),
+    spent_at: row.spent_at as string,
+    note: (row.note as string | null) ?? null,
+    category_id: (row.category_id as string | null) ?? null,
+    category_name: cat?.name ?? null,
+    category_icon: cat?.icon ?? null,
+  };
+}
+
 // Fetch the user's expenses, newest first, with category name/icon resolved.
 export async function getExpenses(limit = 50): Promise<Expense[]> {
   const supabase = await createClient();
@@ -178,24 +194,40 @@ export async function getExpenses(limit = 50): Promise<Expense[]> {
 
   const { data, error } = await supabase
     .from("expenses")
-    .select("id, amount, spent_at, note, category_id, categories ( name, icon )")
+    .select(EXPENSE_SELECT)
     .order("spent_at", { ascending: false })
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);
 
-  return (data ?? []).map((row) => {
-    const cat = Array.isArray(row.categories) ? row.categories[0] : row.categories;
-    return {
-      id: row.id as string,
-      amount: Number(row.amount),
-      spent_at: row.spent_at as string,
-      note: (row.note as string | null) ?? null,
-      category_id: (row.category_id as string | null) ?? null,
-      category_name: cat?.name ?? null,
-      category_icon: cat?.icon ?? null,
-    };
-  });
+  return (data ?? []).map(mapExpense);
+}
+
+// All expenses within a calendar month ("YYYY-MM"), newest first.
+export async function getExpensesByMonth(month: string): Promise<Expense[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const [y, m] = month.split("-").map(Number);
+  if (!y || !m) return [];
+  const start = `${y}-${String(m).padStart(2, "0")}-01`;
+  const nextM = m === 12 ? 1 : m + 1;
+  const nextY = m === 12 ? y + 1 : y;
+  const end = `${nextY}-${String(nextM).padStart(2, "0")}-01`;
+
+  const { data, error } = await supabase
+    .from("expenses")
+    .select(EXPENSE_SELECT)
+    .gte("spent_at", start)
+    .lt("spent_at", end)
+    .order("spent_at", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  return (data ?? []).map(mapExpense);
 }
 
 export async function updateExpense(formData: FormData): Promise<ActionResult> {
@@ -245,30 +277,43 @@ export async function deleteExpense(formData: FormData): Promise<ActionResult> {
   if (error) return { error: error.message };
 
   revalidatePath("/dashboard");
-  return {};
+  return { ok: true };
 }
 
-// First-of-month "YYYY-MM-01" string, offset by `monthsBack` months.
-function monthStart(monthsBack = 0): string {
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() - monthsBack, 1);
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${d.getFullYear()}-${mm}-01`;
+// Anchor = first day of the selected month ("YYYY-MM"), or the current month.
+function anchorDate(month?: string): Date {
+  if (month) {
+    const [y, m] = month.split("-").map(Number);
+    if (y && m) return new Date(y, m - 1, 1);
+  }
+  const n = new Date();
+  return new Date(n.getFullYear(), n.getMonth(), 1);
+}
+function ymFirst(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+function isCurrentMonth(anchor: Date): boolean {
+  const n = new Date();
+  return anchor.getFullYear() === n.getFullYear() && anchor.getMonth() === n.getMonth();
+}
+function monthLabelOf(anchor: Date): string {
+  return anchor.toLocaleDateString("en-US", { month: "long", year: "numeric" });
 }
 
-// Build the current-month Overview: income/allocation set by the user plus
-// summed expenses, for the current and previous month (for deltas).
-export async function getOverview(): Promise<MonthlyOverview> {
+// Build the Overview for `month` (default current): income/allocation plus
+// summed expenses, with the previous month for deltas.
+export async function getOverview(month?: string): Promise<MonthlyOverview> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const cur = monthStart(0);
-  const prev = monthStart(1);
-  const next = monthStart(-1);
+  const anchor = anchorDate(month);
+  const cur = ymFirst(anchor);
+  const prev = ymFirst(new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1));
+  const next = ymFirst(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1));
   const empty: MonthlyOverview = {
-    monthLabel: new Date(cur).toLocaleDateString("en-US", { month: "long" }),
+    monthLabel: monthLabelOf(anchor),
     isSet: false,
     income: 0,
     allocation: 0,
@@ -280,7 +325,7 @@ export async function getOverview(): Promise<MonthlyOverview> {
   };
   if (!user) return empty;
 
-  // Budgets for current + previous month.
+  // Budgets for the selected + previous month.
   const { data: budgets, error: bErr } = await supabase
     .from("monthly_budgets")
     .select("month, income, allocation")
@@ -331,7 +376,7 @@ export async function getOverview(): Promise<MonthlyOverview> {
     .sort((a, b) => b.spent - a.spent || b.limit - a.limit);
 
   return {
-    monthLabel: new Date(cur).toLocaleDateString("en-US", { month: "long" }),
+    monthLabel: monthLabelOf(anchor),
     isSet: !!curB,
     income: Number(curB?.income ?? 0),
     allocation: Number(curB?.allocation ?? 0),
@@ -354,14 +399,19 @@ function isoDate(d: Date): string {
   return `${d.getFullYear()}-${mm}-${dd}`;
 }
 
-// Total expenses per week for the last `weeks` weeks (oldest → current).
-export async function getWeeklySpending(weeks = 8): Promise<WeeklyBar[]> {
+// Total expenses per week for the last `weeks` weeks ending in the anchor
+// month (current week if the anchor is the current month).
+export async function getWeeklySpending(weeks = 8, month?: string): Promise<WeeklyBar[]> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const curWeek = weekStart(new Date());
+  const anchor = anchorDate(month);
+  const ref = isCurrentMonth(anchor)
+    ? new Date()
+    : new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0); // last day of month
+  const curWeek = weekStart(ref);
   const start = new Date(curWeek);
   start.setDate(curWeek.getDate() - (weeks - 1) * 7);
 
@@ -388,16 +438,17 @@ export async function getWeeklySpending(weeks = 8): Promise<WeeklyBar[]> {
   return bars;
 }
 
-// Total expenses per month for the last `months` months (oldest → current).
-export async function getMonthlySpending(months = 6): Promise<WeeklyBar[]> {
+// Total expenses per month for the last `months` months ending at the anchor
+// month (default current), oldest → newest.
+export async function getMonthlySpending(months = 6, month?: string): Promise<WeeklyBar[]> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const now = new Date();
-  const startY = now.getFullYear();
-  const startM = now.getMonth() - (months - 1);
+  const anchor = anchorDate(month);
+  const startY = anchor.getFullYear();
+  const startM = anchor.getMonth() - (months - 1);
 
   const bars: WeeklyBar[] = Array.from({ length: months }, (_, i) => {
     const d = new Date(startY, startM + i, 1);
@@ -406,10 +457,12 @@ export async function getMonthlySpending(months = 6): Promise<WeeklyBar[]> {
   if (!user) return bars;
 
   const start = new Date(startY, startM, 1);
+  const end = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 1);
   const { data, error } = await supabase
     .from("expenses")
     .select("amount, spent_at")
-    .gte("spent_at", isoDate(start));
+    .gte("spent_at", isoDate(start))
+    .lt("spent_at", isoDate(end));
   if (error) throw new Error(error.message);
 
   for (const row of data ?? []) {
@@ -420,7 +473,24 @@ export async function getMonthlySpending(months = 6): Promise<WeeklyBar[]> {
   return bars;
 }
 
-// Upsert the current month's income + spend allocation (net balance).
+// Everything the Overview tab needs for a given month, in one round-trip.
+export async function getOverviewData(month: string): Promise<{
+  overview: MonthlyOverview;
+  weekly: WeeklyBar[];
+  monthly: WeeklyBar[];
+  expenses: Expense[];
+}> {
+  const [overview, weekly, monthly, expenses] = await Promise.all([
+    getOverview(month),
+    getWeeklySpending(8, month),
+    getMonthlySpending(6, month),
+    getExpensesByMonth(month),
+  ]);
+  return { overview, weekly, monthly, expenses: expenses.slice(0, 10) };
+}
+
+// Upsert the income + spend allocation (net balance) for the chosen month
+// (hidden `month` field, "YYYY-MM"); defaults to the current month.
 export async function setMonthlyBudget(formData: FormData): Promise<ActionResult> {
   const supabase = await createClient();
   const {
@@ -430,6 +500,7 @@ export async function setMonthlyBudget(formData: FormData): Promise<ActionResult
 
   const income = Number(formData.get("income"));
   const allocation = Number(formData.get("allocation"));
+  const month = ymFirst(anchorDate(String(formData.get("month") ?? "") || undefined));
 
   if (!Number.isFinite(income) || income < 0) return { error: "Income must be 0 or more." };
   if (!Number.isFinite(allocation) || allocation < 0)
@@ -438,7 +509,7 @@ export async function setMonthlyBudget(formData: FormData): Promise<ActionResult
   const { error } = await supabase
     .from("monthly_budgets")
     .upsert(
-      { user_id: user.id, month: monthStart(0), income, allocation, updated_at: new Date().toISOString() },
+      { user_id: user.id, month, income, allocation, updated_at: new Date().toISOString() },
       { onConflict: "user_id,month" },
     );
   if (error) return { error: error.message };
