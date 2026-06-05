@@ -323,7 +323,7 @@ function OverviewTab({
       <section className="dash-panel" style={{ marginTop: 16 }}>
         <div className="dash-panel-head">
           <h2>Recent expenses</h2>
-          <span className="meta">{expenses.length} total</span>
+          <span className="meta">Latest {expenses.length}</span>
         </div>
         {expenses.length === 0 ? (
           <p className="dash-cat-empty">No expenses yet. Hit “Add expense” to log one.</p>

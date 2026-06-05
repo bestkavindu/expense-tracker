@@ -20,7 +20,7 @@ export default async function DashboardPage() {
   }
 
   const categories = await getCategories();
-  const expenses = await getExpenses();
+  const expenses = await getExpenses(10);
   const overview = await getOverview();
   const weekly = await getWeeklySpending();
   const monthly = await getMonthlySpending();
