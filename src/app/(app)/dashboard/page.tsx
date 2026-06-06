@@ -1,5 +1,13 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/utils/supabase/server";
+import { Dashboard } from "@/components/dashboard";
+import {
+  getCategories,
+  getExpenses,
+  getMonthlySpending,
+  getOverview,
+  getWeeklySpending,
+} from "./actions";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -11,15 +19,20 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
+  const categories = await getCategories();
+  const expenses = await getExpenses(10);
+  const overview = await getOverview();
+  const weekly = await getWeeklySpending();
+  const monthly = await getMonthlySpending();
+
   return (
-    <div className="mx-auto w-full max-w-3xl p-6">
-      <h1 className="text-2xl font-semibold">Dashboard</h1>
-      <p className="mt-2 text-muted-foreground">
-        Signed in as {user.email}.
-      </p>
-      <p className="mt-6 text-sm text-muted-foreground">
-        Expense tracking features coming soon.
-      </p>
-    </div>
+    <Dashboard
+      email={user.email ?? ""}
+      categories={categories}
+      expenses={expenses}
+      overview={overview}
+      weekly={weekly}
+      monthly={monthly}
+    />
   );
 }

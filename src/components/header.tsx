@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/server";
-import { Button } from "@/components/ui/button";
+import { Mark } from "@/components/quiet-auth";
+import "./header.css";
 
 export async function Header() {
   const supabase = await createClient();
@@ -9,25 +10,26 @@ export async function Header() {
   } = await supabase.auth.getUser();
 
   return (
-    <header className="flex items-center justify-between border-b px-6 py-3">
-      <Link href="/" className="font-semibold">
-        Expense Tracker
+    <header className="tally-bar">
+      <Link href="/" className="tally-brand">
+        <Mark size={22} />
+        <b>Tally</b>
       </Link>
 
-      <nav className="flex items-center gap-3">
+      <nav className="tally-nav">
         {user ? (
           <>
-            <span className="text-sm text-muted-foreground">{user.email}</span>
+            <span className="tally-email">{user.email}</span>
             <form action="/auth/signout" method="post">
-              <Button type="submit" variant="outline" size="sm">
+              <button type="submit" className="tally-signout">
                 Sign out
-              </Button>
+              </button>
             </form>
           </>
         ) : (
-          <Button render={<Link href="/login" />} variant="outline" size="sm">
+          <Link href="/login" className="tally-signin">
             Sign in
-          </Button>
+          </Link>
         )}
       </nav>
     </header>
