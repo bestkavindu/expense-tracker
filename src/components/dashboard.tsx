@@ -387,8 +387,12 @@ function ExpenseRow({
     {} as ActionResult,
   );
 
+  const handled = useRef(false);
   useEffect(() => {
-    if (state.ok) onChanged?.();
+    if (state.ok && !handled.current) {
+      handled.current = true;
+      onChanged?.();
+    }
   }, [state.ok, onChanged]);
   return (
     <div className="dash-tx" style={{ opacity: pending ? 0.5 : 1 }}>

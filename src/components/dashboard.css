@@ -495,6 +495,44 @@
     flex: 1;
     justify-content: center;
   }
+  /* expense row: 2-line grid so name/cat/amount/actions never overlap or clip */
+  .dash-tx {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-areas:
+      "icon nm  amt"
+      "icon cat acts";
+    column-gap: 12px;
+    row-gap: 2px;
+    align-items: center;
+  }
+  .dash-tx .icon {
+    grid-area: icon;
+  }
+  .dash-tx .nm {
+    grid-area: nm;
+    font-size: 15.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dash-tx .cat {
+    grid-area: cat;
+    margin-left: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .dash-tx .amt {
+    grid-area: amt;
+    min-width: 0;
+    font-size: 15.5px;
+  }
+  .dash-tx-acts {
+    grid-area: acts;
+    margin-left: 0;
+    justify-self: end;
+  }
 }
 
 /* --- category model: description, default tag, delete, empty --- */

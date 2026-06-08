@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import "./quiet-auth.css";
 
 export function Mark({ size = 24 }: { size?: number }) {
@@ -43,6 +46,14 @@ export const EyeIcon = () => (
   </svg>
 );
 
+export const EyeOffIcon = () => (
+  <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+    <path d="M2 12s3.5-7 10-7c1.4 0 2.7.3 3.9.8M22 12s-3.5 7-10 7c-1.4 0-2.7-.3-3.9-.8" />
+    <path d="M9.9 9.9a2.6 2.6 0 0 0 3.7 3.7" />
+    <line x1="3" y1="3" x2="21" y2="21" />
+  </svg>
+);
+
 const CheckTick = () => (
   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5">
     <path d="m5 12 5 5L20 7" />
@@ -72,6 +83,10 @@ export function Field({
   autoComplete?: string;
   trailing?: React.ReactNode;
 }) {
+  const [show, setShow] = useState(false);
+  const isPassword = type === "password";
+  const effectiveType = isPassword && show ? "text" : type;
+
   return (
     <div className="qm-field">
       <label htmlFor={name}>{label}</label>
@@ -80,14 +95,26 @@ export function Field({
         <input
           id={name}
           name={name}
-          type={type}
+          type={effectiveType}
           placeholder={placeholder}
           defaultValue={defaultValue}
           required={required}
           minLength={minLength}
           autoComplete={autoComplete}
         />
-        {trailing}
+        {isPassword ? (
+          <button
+            type="button"
+            className="qm-eye"
+            onClick={() => setShow((s) => !s)}
+            aria-label={show ? "Hide password" : "Show password"}
+            aria-pressed={show}
+          >
+            {show ? <EyeOffIcon /> : <EyeIcon />}
+          </button>
+        ) : (
+          trailing
+        )}
       </div>
     </div>
   );
